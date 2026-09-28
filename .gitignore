@@ -4,6 +4,8 @@
 ./image/
 
 .DS_Store
-bin/
-build/
-image/
+/bin/
+/build/
+/image/
+/tree/
+/.vscode/
