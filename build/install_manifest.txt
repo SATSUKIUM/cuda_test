@@ -1,0 +1,1 @@
+/home/satsuki/cuda_test/bin/./test
