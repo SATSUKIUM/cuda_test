@@ -18,6 +18,16 @@
 #include <TFile.h>
 #include <TGraph.h>
 
+#include <TVirtualFFT.h>
+#include <TH1D.h>
+#include <TCanvas.h>
+#include <TMath.h>
+#include <iostream>
+#include <vector>
+#include <cmath>
+
+#include <numeric>
+
 #include <TROOT.h> // for gROOT->SetBatch(kTRUE);
 
 __global__ void vecAdd(float* A, float* B, float* C, int length)
@@ -95,16 +105,16 @@ int main(int argc, char* argv[]){
             kernelTimes.push_back(kernelTime);
         }
         std::chrono::high_resolution_clock::time_point after_loop = std::chrono::high_resolution_clock::now();
-        double totalTime = std::chrono::duration<double, std::milli>(after_loop - before_loop).count();
-        std::cout << "Total time for 5e5 iterations: " << std::fixed << std::setprecision(2) << totalTime << " ms" << std::endl;
+        double totalTime_ = std::chrono::duration<double, std::milli>(after_loop - before_loop).count();
+        std::cout << "Total time for 5e5 iterations: " << std::fixed << std::setprecision(2) << totalTime_ << " ms" << std::endl;
 
         // Fill histogram and graph with kernel times
-        double elapsed{0.0}, buffer{0.0};
+        double elapsed_buf{0.0}, buffer{0.0};
         for(size_t i = 0; i < kernelTimes.size(); ++i){
             buffer = kernelTimes[i];
-            elapsed += buffer;
+            elapsed_buf += buffer;
             h1->Fill(buffer);
-            g1->SetPoint(i, elapsed, buffer);
+            g1->SetPoint(i, elapsed_buf, buffer);
         }
 
         c1->cd();
@@ -136,6 +146,150 @@ int main(int argc, char* argv[]){
             }
         }
         std::cout << "Success: All values in C are correct." << std::endl;
+
+        // FFT
+
+        double elapsed = 0.0;
+        const double skipTime = 1e5; // 100 ms
+        const double binWidth = 100.0;  // 100 us
+
+        const double totalTime =
+            std::accumulate(kernelTimes.begin(),
+                            kernelTimes.end(), 0.0);
+
+        const size_t numBins =
+            static_cast<size_t>(
+                (totalTime - skipTime) / binWidth
+            );
+
+        std::vector<double> binSum(numBins, 0.0);
+        std::vector<size_t> binCount(numBins, 0);
+
+double analysisStart = -1.0;
+
+for (size_t i = 0; i < kernelTimes.size(); ++i) {
+    const double currentTime = elapsed;
+    elapsed += kernelTimes[i];
+
+    if (currentTime < skipTime) {
+        continue;
+    }
+
+    if (analysisStart < 0.0) {
+        analysisStart = currentTime;
+    }
+
+    const size_t bin =
+        static_cast<size_t>(
+            (currentTime - analysisStart) / binWidth
+        );
+    
+if (bin < 3) {
+    std::cout << "i=" << i
+              << ", currentTime=" << currentTime
+              << ", bin=" << bin
+              << ", count=" << binCount[bin]
+              << std::endl;
+}
+
+    if (bin >= binSum.size()) {
+        binSum.resize(bin + 1, 0.0);
+        binCount.resize(bin + 1, 0);
+    }
+
+    binSum[bin] += kernelTimes[i];
+    binCount[bin]++;
+}
+
+        // binSum, binCount は集計済みとする
+        const int N = static_cast<int>(binSum.size());
+        // const double binWidth = 100.0; // [us]
+        const double dt = binWidth * 1e-6; // [s]
+        const double fs = 1.0 / dt; // Sampling frequency [Hz]
+
+        // FFT input
+        std::vector<double> fftInput(N);
+
+        double totalSum = 0.0;
+        size_t totalCount = 0;
+
+        // 全体の平均値
+        for (int i = 0; i < N; ++i) {
+            totalSum += binSum[i];
+            totalCount += binCount[i];
+        }
+
+        if (N < 2 || totalCount == 0) {
+            std::cerr << "Invalid FFT input." << std::endl;
+            std::cout << "N: " << N << ", totalCount: " << totalCount << std::endl;
+            return 1;
+        }
+
+        const double globalMean =
+            totalSum / static_cast<double>(totalCount);
+
+        // 各ビンの平均値から全体の平均値を引く
+        for (int i = 0; i < N; ++i) {
+            if (binCount[i] == 0) {
+                std::cerr << "Empty bin: " << i << std::endl;
+                return 1;
+            }
+
+            const double binMean =
+                binSum[i] / static_cast<double>(binCount[i]);
+
+            fftInput[i] = binMean - globalMean;
+        }
+
+        // ROOT FFT (real to complex)
+        int n[1] = {N};
+        TVirtualFFT* fft =
+            TVirtualFFT::FFT(1, n, "R2C ES K");
+
+        if (!fft) {
+            std::cerr << "Failed to create FFT." << std::endl;
+            return 1;
+        }
+
+        fft->SetPoints(fftInput.data());
+        fft->Transform();
+
+        // FFT output: N/2 + 1 complex values
+        const int nFreq = N / 2 + 1;
+        const double df = fs / N; // Frequency resolution [Hz]
+
+        // Histogram
+        TH1D* hFFT = new TH1D(
+            "hFFT",
+            "FFT Power Spectrum;Frequency [Hz];Power [#mus^{2}]",
+            nFreq,
+            -0.5 * df,
+            (nFreq - 0.5) * df
+        );
+
+        for (int k = 0; k < nFreq; ++k) {
+            double re, im;
+            fft->GetPointComplex(k, re, im);
+
+            const double power = re * re + im * im;
+            hFFT->SetBinContent(k + 1, power);
+        }
+
+        hFFT->GetXaxis()->SetRangeUser(0.0, 300.0);
+
+        TCanvas* cFFT = new TCanvas(
+            "cFFT", "FFT Spectrum", 1000, 600
+        );
+
+        cFFT->SetGrid();
+        cFFT->SetLogy();
+        hFFT->Draw("HIST");
+
+        cFFT->SaveAs("./image/vecAdd2_fft.pdf");
+
+        delete fft;
+
+
         return 0;
     }
 } // int main(int argc, char* argv)
