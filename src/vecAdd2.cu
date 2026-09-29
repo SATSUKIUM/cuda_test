@@ -107,6 +107,33 @@ int main(int argc, char* argv[]){
             g1->SetPoint(i, elapsed, buffer);
         }
 
+        std::vector<double> eventTimes;
+        eventTimes.reserve(5e5); // Reserve space for 500,000 elements
+        elapsed = 0.0;
+        for(int i=0; i<5e5; ++i){
+            buffer = kernelTimes[i];
+            elapsed += buffer;
+            if(buffer > 30.0){
+                eventTimes.push_back(elapsed);
+            }
+        }
+
+        TCanvas* c3 = new TCanvas("c3", "Vector Addition; event time differences (us); entry", 800, 600);
+        TH1D* h2 = new TH1D("h2", "Vector Addition; event time differences (us); entry", 400, 0, 1e5);
+        double b1,b2;
+        for(int i=0; i<eventTimes.size(); ++i){
+            if(eventTimes[i] < 1e5){
+                continue; // Skip events that are too close to the start
+            }
+            for(int j=i+1; j<eventTimes.size(); ++j){
+                b1 = eventTimes[i];
+                b2 = eventTimes[j];
+                if(b2 - b1 < 1e5){ // 100 ms
+                    h2->Fill(b2 - b1);
+                } // if(eventTimes[j] - eventTimes[i] < 100.0){
+            } // for(int j=i+1; j<eventTimes.size(); ++j){
+        } // for(int i=0; i<eventTimes.size(); ++i){
+
         c1->cd();
         gPad->SetGrid();
         gPad->SetLogy();
@@ -126,6 +153,12 @@ int main(int argc, char* argv[]){
         g1->Draw("ALP");
         c2->SaveAs((outdir + "vecAdd2_graph.pdf").c_str());
         // c2->SaveAs((outdir + "vecAdd2_graph.png").c_str());
+
+        c3->cd();
+        gPad->SetGrid();
+        h2->Draw();
+        c3->SaveAs((outdir + "vecAdd2_event_time_differences.pdf").c_str());
+        // c3->SaveAs((outdir + "vecAdd2_event_time_differences.png").c_str());
 
 
 
