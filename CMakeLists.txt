@@ -29,20 +29,20 @@ set(CMAKE_INSTALL_RPATH "${ROOT_LIBRARY_DIR}")
 
 # Executable
 
-add_executable(test src/test1.cu)
+for_each(src_file IN LISTS SRC_FILES)
+    get_filename_component(exe_name ${src_file} NAME_WE)
+    add_executable(${exe_name} ${src_file})
 
-# ROOT libraries
+    # Link ROOT libraries
+    target_link_libraries(${exe_name} PRIVATE ROOT::Hist ROOT::RIO ROOT::Tree ROOT::Graf ROOT::Gpad)
 
-target_link_libraries(test PRIVATE ROOT::Hist ROOT::RIO ROOT::Tree ROOT::Graf ROOT::Gpad)
+    # Set output directory for executables
+    set_target_properties(${exe_name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
 
-# Build output
-
-set_target_properties(test PROPERTIES
-RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
-# Install
-
-install(TARGETS test
-RUNTIME DESTINATION .
-)
+    # Install
+    install(TARGETS ${exe_name}
+        RUNTIME DESTINATION .
+    )
+endforeach()
