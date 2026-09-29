@@ -24,7 +24,10 @@ set(CMAKE_BUILD_RPATH "${ROOT_LIBRARY_DIR}")
 set(CMAKE_INSTALL_RPATH "${ROOT_LIBRARY_DIR}")
 
 # ソースファイル
-file(GLOB SRC_FILES "*.cpp")
+file(GLOB SRC_FILES
+    "${CMAKE_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/*.cu"
+)
 
 # Executable
 foreach(src_file IN LISTS SRC_FILES)
