@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include <cuda/cmath> // In this code, cuda::ceil_div()
+#include "cuda_compat.h" // In this code, cuda::ceil_div()
 #include <stdio.h>
 #include <iostream>
 
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]){
         }
 
         const int numThreads = std::stoi(argv[1]);
-        const int numBlocks = cuda::ceil_div(length, numThreads);
+        const int numBlocks = cuda_compat::ceil_div(length, numThreads);
         std::cout << "numBlocks: " << numBlocks << std::endl;
         std::cout << "numThreads: " << numThreads << std::endl;
 
