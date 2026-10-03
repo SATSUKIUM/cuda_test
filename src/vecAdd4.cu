@@ -108,7 +108,7 @@ int main(int argc, char* argv[]){
 
     cudaMemcpy(devA, A, length*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(devB, B, length*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(devC, 0, length*sizeof(float), cudaMemcpyHostToDevice); // nullptrの内容をコピー?
+    cudaMemset(devC, (float)0, length*sizeof(float)); // デバイスの配列をクリア
 
     std::vector<double> kernelTimes;
     kernelTimes.reserve(nLoops); // Reserve space for 500,000 elements
