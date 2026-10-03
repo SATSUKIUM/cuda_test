@@ -21,13 +21,13 @@
 
 #include <TROOT.h> // for gROOT->SetBatch(kTRUE);
 
-__global__ void vecAdd(float* A, float* B, float* C, int length);
+__global__ void vecAdd(uint32_t* A, uint32_t* B, uint32_t* C, int length);
 __global__ void doWarmUp();
-void initializeVectors(float* A, float* B, int length);
-void serialVecAdd(float* A, float* B, float* C_pu, int length);
+void initializeVectors(uint32_t* A, uint32_t* B, int length);
+void serialVecAdd(uint32_t* A, uint32_t* B, uint32_t* C_pu, int length);
 
 
-__global__ void vecAdd(float* A, float* B, float* C, int length)
+__global__ void vecAdd(uint32_t* A, uint32_t* B, uint32_t* C, int length)
 {
     int workerId = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -37,22 +37,22 @@ __global__ void vecAdd(float* A, float* B, float* C, int length)
     else{
         // printf("Worker %d is out of bounds for length %d\n", workerId, length);
     }
-} // __global__ void vecAdd(float* A, float* B, float* C, int length)
+} // __global__ void vecAdd(uint32_t* A, uint32_t* B, uint32_t* C, int length)
 
 __global__ void doWarmUp()
 {
     // do "warm up", and nothing else
 }
 
-void initializeVectors(float* A, float* B, int length)
+void initializeVectors(uint32_t* A, uint32_t* B, int length)
 {
     for(int i = 0; i < length; i++){
-        A[i] = 1.0f;
-        B[i] = 2.0f;
+        A[i] = 1u;
+        B[i] = 2u;
     }
-} // void initializeVectors(float* A, float* B, int length)
+} // void initializeVectors(uint32_t* A, uint32_t* B, int length)
 
-void serialVecAdd(float* A, float* B, float* C_pu, int length)
+void serialVecAdd(uint32_t* A, uint32_t* B, uint32_t* C_pu, int length)
 {
     for(int i = 0; i < length; i++){
         C_pu[i] = A[i] + B[i];
@@ -62,8 +62,8 @@ void serialVecAdd(float* A, float* B, float* C_pu, int length)
 
 int main(int argc, char* argv[]){
     // linear additon of two vectors A and B of size 65536, store the result in vector C
-    // using よしなにやってくれるやり方
-    const int length = 1u << 16; // 65,536 elements (2^16)
+    // explicit memory management
+    const int length = (1u << 19)/4; // 524,288/4 = 131,072 elements (2^(19-2))
     const int nLoops = 1e4; // 10,000 loops
     gROOT->SetBatch(kTRUE); // Disable interactive mode for ROOT
     std::cout << "Vector length: " << length << std::endl;
@@ -84,37 +84,37 @@ int main(int argc, char* argv[]){
     std::cout << "numBlocks: " << numBlocks << std::endl;
     std::cout << "numThreads: " << numThreads << std::endl;
 
-    float* A = nullptr;
-    float* B = nullptr;
-    float* C = nullptr;
-    float* C_pu = (float*)malloc(length * sizeof(float));
+    uint32_t* A = nullptr;
+    uint32_t* B = nullptr;
+    uint32_t* C = nullptr;
+    uint32_t* C_pu = (uint32_t*)malloc(length * sizeof(uint32_t));
 
-    float* devA = nullptr;
-    float* devB = nullptr;
-    float* devC = nullptr;
+    uint32_t* devA = nullptr;
+    uint32_t* devB = nullptr;
+    uint32_t* devC = nullptr;
 
     // cudaMallocManaged(&A, length * sizeof(float));
     // cudaMallocManaged(&B, length * sizeof(float));
     // cudaMallocManaged(&C, length * sizeof(float));
 
-    cudaMallocHost(&A, length * sizeof(float));
-    cudaMallocHost(&B, length * sizeof(float));
-    cudaMallocHost(&C, length * sizeof(float));
+    cudaMallocHost(&A, length * sizeof(uint32_t));
+    cudaMallocHost(&B, length * sizeof(uint32_t));
+    cudaMallocHost(&C, length * sizeof(uint32_t));
 
     initializeVectors(A, B, length);
 
-    cudaMalloc(&devA, length * sizeof(float));
-    cudaMalloc(&devB, length * sizeof(float));
-    cudaMalloc(&devC, length * sizeof(float));
+    cudaMalloc(&devA, length * sizeof(uint32_t));
+    cudaMalloc(&devB, length * sizeof(uint32_t));
+    cudaMalloc(&devC, length * sizeof(uint32_t));
 
     // Copy data from host to device
     std::chrono::high_resolution_clock::time_point before_copy = std::chrono::high_resolution_clock::now();
-    cudaMemcpy(devA, A, length*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(devB, B, length*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemset(devC, (float)0, length*sizeof(float)); // デバイスの配列をクリア
+    cudaMemcpy(devA, A, length*sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(devB, B, length*sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemset(devC, (uint32_t)0, length*sizeof(uint32_t)); // デバイスの配列をクリア
     std::chrono::high_resolution_clock::time_point after_copy = std::chrono::high_resolution_clock::now();
-    double copyTime = std::chrono::duration<double, std::milli>(after_copy - before_copy).count();
-    std::cout << "Data copy time (Host to Device): " << std::fixed << std::setprecision(2) << copyTime << " ms" << std::endl;
+    double copyTime = std::chrono::duration<double, std::micro>(after_copy - before_copy).count();
+    std::cout << "Data copy time (Host to Device): " << std::fixed << std::setprecision(2) << copyTime << " us" << std::endl;
 
     std::vector<double> kernelTimes;
     kernelTimes.reserve(nLoops); // Reserve space for 500,000 elements
@@ -136,10 +136,10 @@ int main(int argc, char* argv[]){
 
     // Copy result from device to host
     std::chrono::high_resolution_clock::time_point before_copy_back = std::chrono::high_resolution_clock::now();
-    cudaMemcpy(C, devC, length*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(C, devC, length*sizeof(uint32_t), cudaMemcpyDeviceToHost);
     std::chrono::high_resolution_clock::time_point after_copy_back = std::chrono::high_resolution_clock::now();
-    double copyBackTime = std::chrono::duration<double, std::milli>(after_copy_back - before_copy_back).count();
-    std::cout << "Data copy time (Device to Host): " << std::fixed << std::setprecision(2) << copyBackTime << " ms" << std::endl;
+    double copyBackTime = std::chrono::duration<double, std::micro>(after_copy_back - before_copy_back).count();
+    std::cout << "Data copy time (Device to Host): " << std::fixed << std::setprecision(2) << copyBackTime << " us" << std::endl;
 
     for(int i = 0; i < length; i++){
         if(C[i] != C_pu[i]){
