@@ -59,10 +59,11 @@ void serialVecAdd(float* A, float* B, float* C_pu, int length)
     }
 }
 
+
 int main(int argc, char* argv[]){
     // linear additon of two vectors A and B of size 65536, store the result in vector C
     // using よしなにやってくれるやり方
-    const int length = 1u << 24; // 16,777,216 elements (2^24)
+    const int length = 1u << 16; // 65,536 elements (2^16)
     const int nLoops = 1e4; // 10,000 loops
     gROOT->SetBatch(kTRUE); // Disable interactive mode for ROOT
     std::cout << "Vector length: " << length << std::endl;
@@ -106,9 +107,14 @@ int main(int argc, char* argv[]){
     cudaMalloc(&devB, length * sizeof(float));
     cudaMalloc(&devC, length * sizeof(float));
 
+    // Copy data from host to device
+    std::chrono::high_resolution_clock::time_point before_copy = std::chrono::high_resolution_clock::now();
     cudaMemcpy(devA, A, length*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(devB, B, length*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemset(devC, (float)0, length*sizeof(float)); // デバイスの配列をクリア
+    std::chrono::high_resolution_clock::time_point after_copy = std::chrono::high_resolution_clock::now();
+    double copyTime = std::chrono::duration<double, std::milli>(after_copy - before_copy).count();
+    std::cout << "Data copy time (Host to Device): " << std::fixed << std::setprecision(2) << copyTime << " ms" << std::endl;
 
     std::vector<double> kernelTimes;
     kernelTimes.reserve(nLoops); // Reserve space for 500,000 elements
@@ -116,7 +122,7 @@ int main(int argc, char* argv[]){
     std::chrono::high_resolution_clock::time_point before_loop = std::chrono::high_resolution_clock::now();
     for(int i=0; i<nLoops; ++i){
         start = std::chrono::high_resolution_clock::now();
-        vecAdd<<<numBlocks, numThreads>>>(A, B, C, length);
+        vecAdd<<<numBlocks, numThreads>>>(devA, devB, devC, length);
         cudaDeviceSynchronize();
         end = std::chrono::high_resolution_clock::now();
         double kernelTime = std::chrono::duration<double, std::micro>(end - start).count();
@@ -128,7 +134,12 @@ int main(int argc, char* argv[]){
 
     serialVecAdd(A, B, C_pu, length);
 
+    // Copy result from device to host
+    std::chrono::high_resolution_clock::time_point before_copy_back = std::chrono::high_resolution_clock::now();
     cudaMemcpy(C, devC, length*sizeof(float), cudaMemcpyDeviceToHost);
+    std::chrono::high_resolution_clock::time_point after_copy_back = std::chrono::high_resolution_clock::now();
+    double copyBackTime = std::chrono::duration<double, std::milli>(after_copy_back - before_copy_back).count();
+    std::cout << "Data copy time (Device to Host): " << std::fixed << std::setprecision(2) << copyBackTime << " ms" << std::endl;
 
     for(int i = 0; i < length; i++){
         if(C[i] != C_pu[i]){
@@ -138,9 +149,9 @@ int main(int argc, char* argv[]){
     }
     std::cout << "Success: All values in C are correct." << std::endl;
 
-    cudaFree(A);
-    cudaFree(B);
-    cudaFree(C);
+    cudaFreeHost(A);
+    cudaFreeHost(B);
+    cudaFreeHost(C);
     cudaFree(devA);
     cudaFree(devB);
     cudaFree(devC);
