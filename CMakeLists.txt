@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
 
-set(CMAKE_CUDA_HOST_COMPILER /usr/bin/g++)
 project(cuda_test LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -35,8 +34,10 @@ foreach(src_file IN LISTS SRC_FILES)
 
     get_filename_component(exe_name "${src_file}" NAME_WE)
 
+    # 実行ファイル
     add_executable(${exe_name} "${src_file}")
 
+    # インクルードヘッダ
     target_include_directories(${exe_name} PRIVATE "${CMAKE_SOURCE_DIR}/include")
 
     # Link ROOT libraries
