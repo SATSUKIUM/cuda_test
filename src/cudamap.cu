@@ -105,12 +105,32 @@ __host__ __device__ TriggerConfig FEEAddrDecoder::getTriggerConfig(uint32_t key)
 
 __global__ void testDecoder(const cudamap::FEEAddrDecoder* decoder)
 {
+    printf("testDecoder called\n");
     uint32_t key;
 
     if (decoder->getKey(
             0x02,
             0xa0,
             3,
+            key)) {
+
+        auto config =
+            decoder->getTriggerConfig(key);
+
+        printf(
+            "key=%u iSubTimeRegion=%u hitBit=%u "
+            "delay=%u width=%u\n",
+            key,
+            config.iSubTimeRegion,
+            config.hitBit,
+            config.delay,
+            config.width
+        );
+    }
+    if(decoder->getKey(
+            0x02,
+            0xa1,
+            6,
             key)) {
 
         auto config =
@@ -210,8 +230,23 @@ int main(int argc, char* argv[]){
     cudaMalloc(&devDecoderPtr, sizeof(cudamap::FEEAddrDecoder));
     cudaMemcpy(devDecoderPtr, &devDecoder, sizeof(cudamap::FEEAddrDecoder), cudaMemcpyHostToDevice);
 
+    std::cout << "before testDecoder kernel launch" << std::endl;
+
     testDecoder<<<1, 1>>>(devDecoderPtr);
-    cudaDeviceSynchronize();
+
+    // launch時のエラー
+    cudaError_t err = cudaGetLastError();
+    std::cout << "launch: "
+            << cudaGetErrorString(err)
+            << std::endl;
+
+    // 実行時のエラー
+    err = cudaDeviceSynchronize();
+    std::cout << "sync: "
+            << cudaGetErrorString(err)
+            << std::endl;
+
+    std::cout << "after testDecoder kernel" << std::endl;
 
 
     return 0;
