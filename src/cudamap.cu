@@ -21,6 +21,8 @@ namespace cudamap {
 
 bool FEEAddrDecoder::initialize(const std::vector<FEEAddr>& feeAddrArray, const std::vector<TriggerConfig>& configArray)
 {
+    const std::string funcName = "[cudamap::FEEAddrDecoder::initialize] ";
+    std::cout << funcName << "initializing Trigger Configuration Decoder" << std::endl;
     if (feeAddrArray.size() != configArray.size()) {
         std::cerr
             << "Number of items does not match between "
@@ -53,13 +55,23 @@ bool FEEAddrDecoder::initialize(const std::vector<FEEAddr>& feeAddrArray, const 
     }
 
     sizeSpaceOfIP3rd = static_cast<uint16_t>(maxIP3rd) - static_cast<uint16_t>(minIP3rd) + 1;
-
     sizeSpaceOfIP4th = static_cast<uint16_t>(maxIP4th) - static_cast<uint16_t>(minIP4th) + 1;
-
     sizeSpaceOfCh = static_cast<uint16_t>(maxCh) - static_cast<uint16_t>(minCh) + 1;
-
     sizeSpaceOfKey = static_cast<uint32_t>(sizeSpaceOfIP3rd) * static_cast<uint32_t>(sizeSpaceOfIP4th) * static_cast<uint32_t>(sizeSpaceOfCh);
 
+    #if 1
+    std::cout << "IP3rd: [" << static_cast<int>(minIP3rd) << ", " << static_cast<int>(maxIP3rd) << "]"
+              << " IP4th: [" << static_cast<int>(minIP4th) << ", " << static_cast<int>(maxIP4th) << "]"
+              << " Ch: [" << static_cast<int>(minCh) << ", " << static_cast<int>(maxCh) << "]"
+              << std::endl;
+    std::cout << "\tsizeSpaceOfKey = sizeSpaceOfIP3rd * sizeSpaceOfIP4th * sizeSpaceOfCh = "
+              << sizeSpaceOfIP3rd << " * "
+              << sizeSpaceOfIP4th << " * "
+              << sizeSpaceOfCh
+              << " = " << sizeSpaceOfKey
+              << std::endl;
+    std::cout << "\t\t" << static_cast<double>(sizeSpaceOfKey) / static_cast<double>(UINT32_MAX) * 100.0 << " % of UINT32_MAX" << std::endl;
+    #endif
 
     // allocate memory
     triggerConfigArray = static_cast<TriggerConfig*>(std::calloc(sizeSpaceOfKey, sizeof(TriggerConfig)));
@@ -77,6 +89,7 @@ bool FEEAddrDecoder::initialize(const std::vector<FEEAddr>& feeAddrArray, const 
         triggerConfigArray[key] = configArray[i];
     }
 
+    std::cout << funcName << "Trigger Configuration Decoder initialized with " << sizeSpaceOfKey << " * " << sizeof(TriggerConfig) << " = " << sizeSpaceOfKey * sizeof(TriggerConfig) << " bytes" << std::endl;
     return true;
 } // bool FEEAddrDecoder::initialize(const std::vector<FEEAddr>& feeAddrArray, const std::vector<TriggerConfig>& configArray)
 
@@ -108,43 +121,13 @@ __global__ void testDecoder(const cudamap::FEEAddrDecoder* decoder)
     printf("testDecoder called\n");
     uint32_t key;
 
-    if (decoder->getKey(
-            0x02,
-            0xa0,
-            3,
-            key)) {
-
-        auto config =
-            decoder->getTriggerConfig(key);
-
-        printf(
-            "key=%u iSubTimeRegion=%u hitBit=%u "
-            "delay=%u width=%u\n",
-            key,
-            config.iSubTimeRegion,
-            config.hitBit,
-            config.delay,
-            config.width
-        );
+    if (decoder->getKey(0x02, 0xa0, 3, key)) { // for 192.168.2.160, ch 3
+        auto config = decoder->getTriggerConfig(key);
+        printf("key=%u iSubTimeRegion=%u hitBit=%u delay=%u width=%u\n", key, config.iSubTimeRegion, config.hitBit, config.delay, config.width);
     }
-    if(decoder->getKey(
-            0x02,
-            0xa1,
-            6,
-            key)) {
-
-        auto config =
-            decoder->getTriggerConfig(key);
-
-        printf(
-            "key=%u iSubTimeRegion=%u hitBit=%u "
-            "delay=%u width=%u\n",
-            key,
-            config.iSubTimeRegion,
-            config.hitBit,
-            config.delay,
-            config.width
-        );
+    if(decoder->getKey(0x02, 0xa1, 6, key)) { // for 192.168.2.161, ch 6
+        auto config = decoder->getTriggerConfig(key);
+        printf("key=%u iSubTimeRegion=%u hitBit=%u delay=%u width=%u\n", key, config.iSubTimeRegion, config.hitBit, config.delay, config.width);
     }
 } // __global__ void testDecoder(const cudamap::FEEAddrDecoder* decoder)
 
