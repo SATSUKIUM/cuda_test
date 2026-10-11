@@ -15,25 +15,12 @@
 #include <iostream>
 #include <limits>
 
-#include <thrust/scan.h>
+#include <thrust/scan.h> // for thrust::exclusive_scan
+#include <thrust/device_ptr.h> // for thrust::device_ptr
+#include <thrust/execution_policy.h> // for thrust::device
 
 #include <bitset>
 
-
-__global__ void vecAdd(uint32_t* A, int length)
-{
-    int workerId = blockDim.x * blockIdx.x + threadIdx.x;
-
-    if(workerId < length){
-        // atomicOr(&A[workerId], 1u << workerId);
-        atomicOr(&A[0], 1u << workerId);
-    }
-    else{
-        // printf("Worker %d is out of bounds for length %d\n", workerId, length);
-    }
-
-    return;
-} // __global__ void vecAdd(float* A, float* B, float* C, int length)
 
 __global__ void doWarmUp()
 {
@@ -41,16 +28,34 @@ __global__ void doWarmUp()
     return;
 } // __global__ void doWarmUp()
 
-void initArray(uint32_t* array_, int length_, uint32_t value_)
+__global__ void collectResults(uint32_t* summedPrefix, uint32_t* original, uint32_t* result, int length)
 {
+    int workerId = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if(workerId < length){
+        if(original[workerId] != 0){
+            result[summedPrefix[workerId]] = workerId;
+        }
+    }
+    else{
+        // printf("Worker %d is out of bounds for length %d\n", workerId, length);
+    }
+
+    return;
+} // __global__ void collectResults(uint32_t* summedPrefix, uint32_t* original, uint32_t* result, int length)
+
+void initArray(uint32_t* array_, int length_)
+{
+    std::vector<uint32_t> initVec(length_);
+    initVec = {0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0};
     for(int i = 0; i < length_; i++){
-        array_[i] = value_;
+        array_[i] = initVec[i % initVec.size()];
     }
 } // void initArray(uint32_t* array_, int length_, uint32_t value_)
 
 int main(int argc, char* argv[]){
     // linear additon of two vectors A and B of size 65536, store the result in vector C
-    const int length = 1u << 4; // 16
+    const int length = 1u << 5; // 32
 
     // set the number of threads and blocks
     const int numThreads = 256;
@@ -69,26 +74,84 @@ int main(int argc, char* argv[]){
 
     // declare and initialize the array
     uint32_t* A;
+    uint32_t* B;
     cudaMallocHost(&A, length * sizeof(uint32_t));
-    initArray(A, length, 0);
+    cudaMallocHost(&B, length * sizeof(uint32_t));
+    initArray(A, length);
 
     uint32_t* devA;
+    uint32_t* devB;
     cudaMalloc(&devA, length * sizeof(uint32_t));
+    cudaMalloc(&devB, length * sizeof(uint32_t));
+    // copy the array from host to device
+    std::chrono::high_resolution_clock::time_point copyStart, copyEnd;
+    copyStart = std::chrono::high_resolution_clock::now();
     cudaMemcpy(devA, A, length * sizeof(uint32_t), cudaMemcpyHostToDevice);
+    copyEnd = std::chrono::high_resolution_clock::now();
+    double copyTime = std::chrono::duration<double, std::micro>(copyEnd - copyStart).count();
+    std::cout << "Copy time: " << std::fixed << std::setprecision(2) << copyTime << " us" << std::endl;
 
-    // kernel execution
-    std::chrono::high_resolution_clock::time_point kernelStart, kernelEnd;
-    kernelStart = std::chrono::high_resolution_clock::now();
-    vecAdd<<<numBlocks, numThreads>>>(devA, length);
+    // perform exclusive scan using Thrust
+    std::chrono::high_resolution_clock::time_point scanStart, scanEnd;
+    scanStart = std::chrono::high_resolution_clock::now();
+    thrust::exclusive_scan(thrust::device, thrust::device_pointer_cast(devA), thrust::device_pointer_cast(devA) + length, thrust::device_pointer_cast(devB));
+    scanEnd = std::chrono::high_resolution_clock::now();
+    double scanTime = std::chrono::duration<double, std::micro>(scanEnd - scanStart).count();
+    std::cout << "Scan time: " << std::fixed << std::setprecision(2) << scanTime << " us" << std::endl;
+
+    // copy the result back to host
+    std::chrono::high_resolution_clock::time_point copyBackStart, copyBackEnd;
+    copyBackStart = std::chrono::high_resolution_clock::now();
+    cudaMemcpy(B, devB, length * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    copyBackEnd = std::chrono::high_resolution_clock::now();
+    double copyBackTime = std::chrono::duration<double, std::micro>(copyBackEnd - copyBackStart).count();
+    std::cout << "Copy back time: " << std::fixed << std::setprecision(2) << copyBackTime << " us" << std::endl;
+
+    // allocate memory for the result
+    uint32_t* C;
+    cudaMallocHost(&C, (length >> 1) * sizeof(uint32_t));
+    uint32_t* devC;
+    cudaMalloc(&devC, (length >> 1) * sizeof(uint32_t));
+    cudaMemset(devC, 0, (length >> 1) * sizeof(uint32_t));
+
+    // perform atomic addition to collect results
+    std::chrono::high_resolution_clock::time_point atomicStart, atomicEnd;
+    atomicStart = std::chrono::high_resolution_clock::now();
+    collectResults<<<numBlocks, numThreads>>>(devB, devA, devC, length);
     cudaDeviceSynchronize();
-    kernelEnd = std::chrono::high_resolution_clock::now();
-    double kernelTime = std::chrono::duration<double, std::micro>(kernelEnd - kernelStart).count();
-    std::cout << "Kernel execution time: " << std::fixed << std::setprecision(2) << kernelTime << " us" << std::endl;
+    atomicEnd = std::chrono::high_resolution_clock::now();
+    double atomicTime = std::chrono::duration<double, std::micro>(atomicEnd - atomicStart).count();
+    std::cout << "Atomic addition time: " << std::fixed << std::setprecision(2) << atomicTime << " us" << std::endl;
 
-    cudaMemcpy(A, devA, length * sizeof(uint32_t), cudaMemcpyDeviceToHost);
-    // for(int i = 0; i < length; i++){
-    //     std::cout << "A[" << i << "] = " << std::bitset<32>(A[i]) << std::endl;
-    // }
-    std::cout << "A[0] = " << std::bitset<32>(A[0]) << std::endl;
+    // copy the result back to host
+    std::chrono::high_resolution_clock::time_point copyResultStart, copyResultEnd;
+    copyResultStart = std::chrono::high_resolution_clock::now();
+    cudaMemcpy(C, devC, (length >> 1) * sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    copyResultEnd = std::chrono::high_resolution_clock::now();
+    double copyResultTime = std::chrono::duration<double, std::micro>(copyResultEnd - copyResultStart).count();
+    std::cout << "Copy result time: " << std::fixed << std::setprecision(2) << copyResultTime << " us" << std::endl;
+
+
+    std::cout << "indices: ";
+    for(int i = 0; i < length; i++){
+        std::cout << std::setw(2) << std::setfill(' ') << i << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "A:       ";
+    for(int i = 0; i < length; i++){
+        std::cout << std::setw(2) << std::setfill(' ') << A[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "B:       ";
+    for(int i = 0; i < length; i++){
+        std::cout << std::setw(2) << std::setfill(' ') << B[i] << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "C:       ";
+    for(int i = 0; i < length >> 1; i++){
+        std::cout << std::setw(2) << std::setfill(' ') << C[i] << " ";
+    }
+    std::cout << std::endl;
+
     return 0;
 } // int main(int argc, char* argv)
