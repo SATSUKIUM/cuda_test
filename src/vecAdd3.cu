@@ -93,7 +93,7 @@ int main(int argc, char* argv[]){
     // kernel execution
     std::chrono::high_resolution_clock::time_point kernelStart, kernelEnd;
     kernelStart = std::chrono::high_resolution_clock::now();
-    vecAdd<<<numBlocks, numThreads>>>(A, B, C, length);
+    vecAdd<<<numBlocks, numThreads>>>(devA, devB, devC, length);
     cudaDeviceSynchronize();
     kernelEnd = std::chrono::high_resolution_clock::now();
     double kernelTime = std::chrono::duration<double, std::milli>(kernelEnd - kernelStart).count();

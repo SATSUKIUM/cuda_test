@@ -17,6 +17,8 @@
 
 #include <thrust/scan.h>
 
+#include <bitset>
+
 
 __global__ void vecAdd(uint32_t* A, int length)
 {
