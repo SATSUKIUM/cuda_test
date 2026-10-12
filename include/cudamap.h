@@ -9,9 +9,9 @@ namespace cudamap {
 
     struct TriggerConfig
     {
-        uint8_t  iSubTimeRegion{};
         uint32_t hitBit{};
-        uint8_t  delay{};
+        uint8_t  iSubTimeRegion{};
+        int16_t  delay{};
         uint8_t  width{};
     }; // struct TriggerConfig
 
@@ -58,6 +58,11 @@ namespace cudamap {
         uint16_t sizeSpaceOfIP2nd{};
         uint16_t sizeSpaceOfIP3rd{};
         uint16_t sizeSpaceOfIP4th{};
+        uint32_t strideCh{};
+        uint32_t strideIP4th{};
+        uint32_t strideIP3rd{};
+        uint32_t strideIP2nd{};
+        uint32_t strideIP1st{};
         uint16_t sizeSpaceOfCh{};
 
         uint32_t sizeSpaceOfKey{};
