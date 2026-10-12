@@ -54,8 +54,10 @@ void initArray(uint32_t* array_, int length_)
 } // void initArray(uint32_t* array_, int length_, uint32_t value_)
 
 int main(int argc, char* argv[]){
+    const std::string funcName = "[exclusive_scan.cu/main] ";
+    std::cout << funcName << "start" << std::endl;
     // linear additon of two vectors A and B of size 65536, store the result in vector C
-    const int length = 1u << 5; // 32
+    const int length = 1u << 17; // 131072
 
     // set the number of threads and blocks
     const int numThreads = 256;
@@ -133,22 +135,23 @@ int main(int argc, char* argv[]){
 
 
     std::cout << "indices: ";
-    for(int i = 0; i < length; i++){
+    int looplimit = std::min(length, 32);
+    for(int i = 0; (i < looplimit) && (i < length); i++){
         std::cout << std::setw(2) << std::setfill(' ') << i << " ";
     }
     std::cout << std::endl;
     std::cout << "A:       ";
-    for(int i = 0; i < length; i++){
+    for(int i = 0; (i < looplimit) && (i < length); i++){
         std::cout << std::setw(2) << std::setfill(' ') << A[i] << " ";
     }
     std::cout << std::endl;
     std::cout << "B:       ";
-    for(int i = 0; i < length; i++){
+    for(int i = 0; (i < looplimit) && (i < length); i++){
         std::cout << std::setw(2) << std::setfill(' ') << B[i] << " ";
     }
     std::cout << std::endl;
     std::cout << "C:       ";
-    for(int i = 0; i < length >> 1; i++){
+    for(int i = 0; (i < looplimit) && (i < length >> 1); i++){
         std::cout << std::setw(2) << std::setfill(' ') << C[i] << " ";
     }
     std::cout << std::endl;

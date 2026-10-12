@@ -168,6 +168,8 @@ __global__ void testDecoder(const cudamap::FEEAddrDecoder* decoder)
 
 
 int main(int argc, char* argv[]){
+    const std::string funcName = "[cudamap.cu/main] ";
+    std::cout << funcName << "start" << std::endl;
     // warm-up the GPU
     std::chrono::high_resolution_clock::time_point start, end;
     start = std::chrono::high_resolution_clock::now();
